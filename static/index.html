@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Deep Learning Model Comparison System | Final Year Project</title>
+    <link rel="stylesheet" href="styles.css">
+    <link
+        href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&family=Inter:wght@300;400;500;600;700&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+
+<body>
+    <div class="app-container">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <div class="logo">
+                    <div class="logo-icon">
+                        <i class="fas fa-brain"></i>
+                    </div>
+                    <div class="logo-text">
+                        <h1>VisionX</h1>
+                        <p class="subtitle">Deep Learning System</p>
+                    </div>
+                </div>
+            </div>
+
+            <nav class="sidebar-nav">
+                <div class="nav-section">
+                    <p class="nav-section-title">Dashboard</p>
+                    <button class="nav-item active" data-view="comparison">
+                        <i class="fas fa-chart-line nav-icon"></i>
+                        <span>All Models</span>
+                        <span class="nav-badge" id="available-models-count">1</span>
+                    </button>
+                </div>
+
+                <div class="nav-section">
+                    <p class="nav-section-title">Models</p>
+                    <button class="nav-item" data-model="12layer_cnn">
+                        <i class="fas fa-layer-group nav-icon"></i>
+                        <span>12 Layer CNN</span>
+                        <i class="fas fa-times-circle nav-status unavailable-icon"></i>
+                    </button>
+                    <button class="nav-item" data-model="resnet50">
+                        <i class="fas fa-network-wired nav-icon"></i>
+                        <span>ResNet50</span>
+                        <i class="fas fa-times-circle nav-status unavailable-icon"></i>
+                    </button>
+                    <button class="nav-item" data-model="5layer_cnn">
+                        <i class="fas fa-bolt nav-icon"></i>
+                        <span>5 Layer CNN</span>
+                        <i class="fas fa-check-circle nav-status available-icon"></i>
+                    </button>
+                    <button class="nav-item" data-model="beit">
+                        <i class="fas fa-brain nav-icon"></i>
+                        <span>BEiT (HuggingFace)</span>
+                        <i class="fas fa-check-circle nav-status available-icon"></i>
+                    </button>
+                    <button class="nav-item" data-model="swin">
+                        <i class="fas fa-eye nav-icon"></i>
+                        <span>Swin Transformer</span>
+                        <i class="fas fa-check-circle nav-status available-icon"></i>
+                    </button>
+                </div>
+            </nav>
+
+            <div class="sidebar-footer">
+                <button class="nav-item about-btn" data-view="about">
+                    <i class="fas fa-info-circle nav-icon"></i>
+                    <span>About</span>
+                </button>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Header -->
+            <header class="content-header">
+                <div class="header-content">
+                    <div>
+                        <h2 id="page-title">Model Comparison Dashboard</h2>
+                        <p id="page-subtitle">Upload an image to analyze predictions across multiple deep learning
+                            models</p>
+                    </div>
+                    <div class="header-stats">
+                        <div class="stat-card">
+                            <i class="fas fa-database"></i>
+                            <div>
+                                <span class="stat-value" id="stat-models">1</span>
+                                <span class="stat-label">Active Models</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </header>
+
+            <!-- Image Upload Section -->
+            <section class="upload-section">
+                <div class="upload-card">
+                    <div class="upload-area" id="upload-area">
+                        <div class="upload-content">
+                            <div class="upload-icon-wrapper">
+                                <i class="fas fa-cloud-upload-alt"></i>
+                            </div>
+                            <h3>Upload Image</h3>
+                            <p>Drag and drop your image here, or click to browse</p>
+                            <p class="upload-hint">Supports: JPG, PNG, JPEG (Max 10MB)</p>
+                            <input type="file" id="image-input" accept="image/*" style="display: none;">
+                            <button class="btn-primary" id="upload-btn">
+                                <i class="fas fa-folder-open"></i>
+                                Choose File
+                            </button>
+                        </div>
+                    </div>
+                    <div class="image-preview-card" id="image-preview" style="display: none;">
+                        <div class="preview-header">
+                            <h4><i class="fas fa-image"></i> Image Preview</h4>
+                            <button class="btn-icon" id="clear-image-btn" title="Remove image">
+                                <i class="fas fa-times"></i>
+                            </button>
+                        </div>
+                        <div class="preview-content">
+                            <img id="preview-img" src="" alt="Preview">
+                            <div class="preview-info">
+                                <p id="image-name"></p>
+                                <p id="image-size"></p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Loading Indicator -->
+            <div class="loading-overlay" id="loading" style="display: none;">
+                <div class="loading-content">
+                    <div class="spinner-large"></div>
+                    <h3>Processing Image</h3>
+                    <p>Analyzing with deep learning models...</p>
+                    <div class="loading-progress">
+                        <div class="progress-bar" id="progress-bar"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Comparison View -->
+            <section class="comparison-view" id="comparison-view">
+                <div class="section-header">
+                    <h3><i class="fas fa-chart-bar"></i> Model Predictions Comparison</h3>
+                    <p>Results from all available models</p>
+                </div>
+                <div class="results-grid" id="results-grid">
+                    <div class="empty-state-card">
+                        <i class="fas fa-upload"></i>
+                        <h4>No Image Uploaded</h4>
+                        <p>Upload an image above to see predictions from all models</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Single Model View -->
+            <section class="model-view" id="model-view" style="display: none;">
+                <div class="section-header">
+                    <h3 id="model-name-display"><i class="fas fa-microscope"></i> Model Analysis</h3>
+                    <p>Detailed predictions and performance metrics</p>
+                </div>
+
+                <div class="model-metrics-grid" id="model-metrics"></div>
+
+                <div class="prediction-card" id="prediction-results">
+                    <div class="empty-state-card">
+                        <i class="fas fa-upload"></i>
+                        <h4>No Image Uploaded</h4>
+                        <p>Upload an image to see predictions</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- About View -->
+            <section class="about-view" id="about-view" style="display: none;">
+                <div class="section-header">
+                    <h3><i class="fas fa-info-circle"></i> About This Project</h3>
+                    <p>Comprehensive information about the project, models, and dataset</p>
+                </div>
+
+                <div class="about-content">
+                    <!-- Project Overview -->
+                    <div class="about-card">
+                        <div class="about-card-header">
+                            <i class="fas fa-project-diagram"></i>
+                            <h4>Project Overview</h4>
+                        </div>
+                        <div class="about-card-body">
+                            <p>This is a <strong>Diabetic Retinopathy (DR) Classification System</strong> that uses
+                                multiple deep learning models to analyze retinal images and predict whether an eye shows
+                                signs of diabetic retinopathy or is healthy.</p>
+                            <p>The system compares predictions from different model architectures to provide
+                                comprehensive analysis and performance metrics.</p>
+                        </div>
+                    </div>
+
+                    <!-- Models Used -->
+                    <div class="about-card">
+                        <div class="about-card-header">
+                            <i class="fas fa-brain"></i>
+                            <h4>Models Used</h4>
+                        </div>
+                        <div class="about-card-body">
+                            <div class="model-info-grid">
+                                <div class="model-info-item">
+                                    <h5><i class="fas fa-layer-group"></i> 12 Layer CNN</h5>
+                                    <p>Custom 12-layer Convolutional Neural Network designed for retinal image
+                                        classification. Features multiple convolutional and pooling layers for feature
+                                        extraction.</p>
+                                    <ul>
+                                        <li><strong>Parameters:</strong> 2.3M</li>
+                                        <li><strong>Accuracy:</strong> 100%</li>
+                                        <li><strong>Architecture:</strong> Custom CNN with batch normalization</li>
+                                    </ul>
+                                </div>
+
+                                <div class="model-info-item">
+                                    <h5><i class="fas fa-network-wired"></i> ResNet50</h5>
+                                    <p>Deep Residual Network with 50 layers, leveraging skip connections to enable
+                                        training of very deep networks without degradation.</p>
+                                    <ul>
+                                        <li><strong>Parameters:</strong> 25.6M</li>
+                                        <li><strong>Accuracy:</strong> 85%</li>
+                                        <li><strong>Architecture:</strong> Residual blocks with identity mapping</li>
+                                    </ul>
+                                </div>
+
+                                <div class="model-info-item">
+                                    <h5><i class="fas fa-bolt"></i> 5 Layer CNN</h5>
+                                    <p>Lightweight 5-layer Convolutional Neural Network optimized for fast inference
+                                        while maintaining good classification performance.</p>
+                                    <ul>
+                                        <li><strong>Parameters:</strong> 1.1M</li>
+                                        <li><strong>Accuracy:</strong> 89%</li>
+                                        <li><strong>Architecture:</strong> Compact CNN design</li>
+                                    </ul>
+                                </div>
+
+                                <div class="model-info-item">
+                                    <h5><i class="fas fa-brain"></i> BEiT (HuggingFace)</h5>
+                                    <p>Bidirectional Encoder representation from Image Transformers - a vision
+                                        transformer model pre-trained on ImageNet and fine-tuned for medical image
+                                        classification.</p>
+                                    <ul>
+                                        <li><strong>Parameters:</strong> 86.5M</li>
+                                        <li><strong>Accuracy:</strong> 90-99%</li>
+                                        <li><strong>Architecture:</strong> Vision Transformer (ViT-based)</li>
+                                    </ul>
+                                </div>
+
+                                <div class="model-info-item">
+                                    <h5><i class="fas fa-eye"></i> Swin Transformer</h5>
+                                    <p>Shifted Window Transformer - a hierarchical vision transformer that uses shifted
+                                        windows for efficient computation and better feature representation.</p>
+                                    <ul>
+                                        <li><strong>Parameters:</strong> 88.0M</li>
+                                        <li><strong>Accuracy:</strong> 90-99%</li>
+                                        <li><strong>Architecture:</strong> Hierarchical Swin Transformer</li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Dataset Information -->
+                    <div class="about-card">
+                        <div class="about-card-header">
+                            <i class="fas fa-database"></i>
+                            <h4>Dataset</h4>
+                        </div>
+                        <div class="about-card-body">
+                            <p>The models were trained on a <strong>retinal fundus image dataset</strong> for diabetic
+                                retinopathy classification.</p>
+                            <div class="dataset-details">
+                                <div class="dataset-item">
+                                    <strong><i class="fas fa-images"></i> Image Type:</strong>
+                                    <span>Retinal Fundus Images</span>
+                                </div>
+                                <div class="dataset-item">
+                                    <strong><i class="fas fa-tags"></i> Classes:</strong>
+                                    <span>2 (Healthy / DR)</span>
+                                </div>
+                                <div class="dataset-item">
+                                    <strong><i class="fas fa-ruler"></i> Image Size:</strong>
+                                    <span>224x224 pixels (preprocessed)</span>
+                                </div>
+                                <div class="dataset-item">
+                                    <strong><i class="fas fa-palette"></i> Preprocessing:</strong>
+                                    <span>Resize, Normalization (ImageNet/Simple)</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Technology Stack -->
+                    <div class="about-card">
+                        <div class="about-card-header">
+                            <i class="fas fa-code"></i>
+                            <h4>Technology Stack</h4>
+                        </div>
+                        <div class="about-card-body">
+                            <div class="tech-stack">
+                                <div class="tech-item">
+                                    <i class="fab fa-python"></i>
+                                    <span><strong>Python</strong> - Backend & ML</span>
+                                </div>
+                                <div class="tech-item">
+                                    <i class="fas fa-fire"></i>
+                                    <span><strong>Flask</strong> - Web Framework</span>
+                                </div>
+                                <div class="tech-item">
+                                    <i class="fas fa-brain"></i>
+                                    <span><strong>PyTorch</strong> - Deep Learning</span>
+                                </div>
+                                <div class="tech-item">
+                                    <i class="fas fa-hugging-face"></i>
+                                    <span><strong>HuggingFace</strong> - Transformers</span>
+                                </div>
+                                <div class="tech-item">
+                                    <i class="fas fa-cube"></i>
+                                    <span><strong>timm</strong> - PyTorch Image Models</span>
+                                </div>
+                                <div class="tech-item">
+                                    <i class="fab fa-html5"></i>
+                                    <span><strong>HTML/CSS/JS</strong> - Frontend</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Features -->
+                    <div class="about-card">
+                        <div class="about-card-header">
+                            <i class="fas fa-star"></i>
+                            <h4>Key Features</h4>
+                        </div>
+                        <div class="about-card-body">
+                            <ul class="features-list">
+                                <li><i class="fas fa-check-circle"></i> Multi-model comparison for comprehensive
+                                    analysis</li>
+                                <li><i class="fas fa-check-circle"></i> Real-time prediction with confidence scores</li>
+                                <li><i class="fas fa-check-circle"></i> Detailed performance metrics for each model</li>
+                                <li><i class="fas fa-check-circle"></i> Support for both traditional CNNs and Vision
+                                    Transformers</li>
+                                <li><i class="fas fa-check-circle"></i> Professional and intuitive user interface</li>
+                                <li><i class="fas fa-check-circle"></i> Drag-and-drop image upload functionality</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+
+</html>
