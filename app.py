@@ -17,15 +17,6 @@ except ImportError:
     PYTORCH_AVAILABLE = False
     print("WARNING: PyTorch is not available. Please install: pip install torch torchvision")
 
-# Check for timm (PyTorch Image Models)
-try:
-    import timm
-    TIMM_AVAILABLE = True
-    print("✓ timm is available")
-except ImportError:
-    TIMM_AVAILABLE = False
-    print("timm not available (optional). Install with: pip install timm")
-
 # Check for HuggingFace transformers
 try:
     from transformers import AutoModelForImageClassification, AutoImageProcessor
@@ -35,21 +26,12 @@ except ImportError:
     HUGGINGFACE_AVAILABLE = False
     print("HuggingFace transformers not available (optional). Install with: pip install transformers")
 
-# Check for TensorFlow (for backward compatibility)
-try:
-    import tensorflow as tf
-    from tensorflow import keras
-    TENSORFLOW_AVAILABLE = True
-    print("✓ TensorFlow is available")
-except ImportError:
-    TENSORFLOW_AVAILABLE = False
-    print("TensorFlow not available (optional)")
 
 app = Flask(__name__, static_folder='static', static_url_path='')
 CORS(app, resources={r"/api/*": {"origins": "*"}})
 
 # Model paths - update these with your actual model file paths
-# Supports .pth (PyTorch), .h5 (TensorFlow/Keras), timm models, and HuggingFace models
+# Supports .pth (PyTorch) and HuggingFace models
 MODEL_PATHS = {
     "12layer_cnn": "models/12layer_cnn.pth",
     "resnet50": "models/resnet50.pth",
@@ -59,7 +41,7 @@ MODEL_PATHS = {
 }
 
 # Model configurations - specify how to load each model
-# Options: 'pth_file', 'timm', 'huggingface', 'tensorflow'
+# Options: 'pth_file', 'huggingface'
 MODEL_CONFIGS = {
     "12layer_cnn": {"type": "pth_file", "source": "models/12layer_cnn.pth"},
     "resnet50": {"type": "pth_file", "source": "models/resnet50.pth"},
@@ -67,14 +49,14 @@ MODEL_CONFIGS = {
     "beit": {
         "type": "pth_file",  # Load your trained weights from .pth
         "source": "models/beit.pth",
-        "timm_architecture": "beit_base_patch16_224",  # Use timm architecture (matches your .pth format)
+        "huggingface_architecture": "microsoft/beit-base-patch16-224",  # Use HuggingFace architecture
         "num_classes": 1,  # Binary classification with sigmoid (1 output)
         "reverse_classes": False  # Set to True if model was trained with reversed labels (0=DR, 1=No DR)
     },
     "swin": {
         "type": "pth_file",  # Load your trained weights from .pth
         "source": "models/swin.pth",
-        "timm_architecture": "swin_base_patch4_window7_224",  # Use timm architecture (matches your .pth format)
+        "huggingface_architecture": "microsoft/swin-base-patch4-window7-224",  # Use HuggingFace architecture
         "num_classes": 1,  # Binary classification with sigmoid (1 output)
         "reverse_classes": False  # Set to True if model was trained with reversed labels (0=DR, 1=No DR)
     }
@@ -252,30 +234,6 @@ PERFORMANCE_METRICS = {
     }
 }
 
-def load_from_timm(model_name, num_classes=None):
-    """Load a model from timm library"""
-    if not TIMM_AVAILABLE:
-        return None
-    
-    try:
-        print(f"Loading {model_name} from timm...")
-        model = timm.create_model(
-            model_name,
-            pretrained=True,
-            num_classes=num_classes if num_classes else 1000
-        )
-        model.to(DEVICE)
-        model.eval()
-        print(f"✓ Successfully loaded {model_name} from timm")
-        return {
-            'type': 'timm',
-            'model': model,
-            'model_name': model_name
-        }
-    except Exception as e:
-        print(f"Error loading from timm: {e}")
-        return None
-
 def load_from_huggingface(model_name, num_classes=None):
     """Load a model from HuggingFace with proper preprocessing"""
     if not HUGGINGFACE_AVAILABLE:
@@ -330,7 +288,7 @@ def load_from_huggingface(model_name, num_classes=None):
         return None
 
 def load_pytorch_model(model_path, model_key, config=None):
-    """Load a PyTorch model (.pth file) with support for timm/HuggingFace architectures"""
+    """Load a PyTorch model (.pth file) with support for HuggingFace architectures"""
     try:
         # Try loading as a full model state dict or checkpoint
         checkpoint = torch.load(model_path, map_location=DEVICE)
@@ -370,16 +328,26 @@ def load_pytorch_model(model_path, model_key, config=None):
         # Try to load model architecture
         model = None
         
-        # First, try timm if available and specified (priority - your models are in timm format!)
-        if config and config.get('timm_architecture') and TIMM_AVAILABLE:
+        # Try HuggingFace if available and specified
+        if model is None and config and config.get('huggingface_architecture') and HUGGINGFACE_AVAILABLE:
             try:
-                timm_name = config['timm_architecture']
+                hf_name = config['huggingface_architecture']
                 num_classes = num_classes or config.get('num_classes') or 1  # Default to 1 for binary sigmoid
-                print(f"Attempting to load architecture from timm: {timm_name}")
+                print(f"Attempting to load architecture from HuggingFace: {hf_name}")
                 print(f"Using num_classes: {num_classes} (binary classification with sigmoid)")
                 
-                # Create model without pretrained weights
-                model = timm.create_model(timm_name, pretrained=False, num_classes=num_classes)
+                # Load processor for preprocessing
+                processor = AutoImageProcessor.from_pretrained(
+                    hf_name,
+                    size={"height": 224, "width": 224}
+                )
+                
+                # Load model architecture (without pretrained weights for classifier)
+                model = AutoModelForImageClassification.from_pretrained(
+                    hf_name,
+                    num_labels=num_classes,
+                    ignore_mismatched_sizes=True
+                )
                 
                 # Handle state dict key mismatches
                 state_dict_to_load = state_dict
@@ -437,16 +405,17 @@ def load_pytorch_model(model_path, model_key, config=None):
                 
                 model.to(DEVICE)
                 model.eval()
-                print(f"✓ Successfully loaded model using timm architecture with your trained weights")
+                print(f"✓ Successfully loaded model using HuggingFace architecture with your trained weights")
                 return {
-                    'type': 'pytorch_timm',
+                    'type': 'pytorch_huggingface',
                     'model': model,
+                    'processor': processor,
                     'state_dict': state_dict,
                     'checkpoint': checkpoint if isinstance(checkpoint, dict) else None,
                     'model_path': model_path
                 }
             except Exception as e:
-                print(f"Failed to load with timm: {e}")
+                print(f"Failed to load with HuggingFace: {e}")
                 import traceback
                 traceback.print_exc()
         
@@ -531,29 +500,8 @@ def load_pytorch_model(model_path, model_key, config=None):
                 import traceback
                 traceback.print_exc()
         
-        # Then, try timm if available and specified
-        if model is None and config and config.get('timm_fallback') and TIMM_AVAILABLE:
-            try:
-                timm_name = config['timm_fallback']
-                num_classes = num_classes or config.get('num_classes')
-                print(f"Attempting to load architecture from timm: {timm_name}")
-                model = timm.create_model(timm_name, pretrained=False, num_classes=num_classes or 1000)
-                model.load_state_dict(state_dict)
-                model.to(DEVICE)
-                model.eval()
-                print(f"✓ Successfully loaded model using timm architecture")
-                return {
-                    'type': 'pytorch_timm',
-                    'model': model,
-                    'state_dict': state_dict,
-                    'checkpoint': checkpoint if isinstance(checkpoint, dict) else None,
-                    'model_path': model_path
-                }
-            except Exception as e:
-                print(f"Failed to load with timm: {e}")
-        
-        # Try HuggingFace if available and specified
-        if config and config.get('huggingface_fallback') and HUGGINGFACE_AVAILABLE:
+        # Try HuggingFace fallback if available and specified
+        if model is None and config and config.get('huggingface_fallback') and HUGGINGFACE_AVAILABLE:
             try:
                 hf_name = config['huggingface_fallback']
                 num_classes = num_classes or config.get('num_classes') or 2
@@ -632,16 +580,7 @@ def load_model(model_key):
         model_type = config.get('type', 'pth_file')
         
         # Try loading based on configuration
-        if model_type == 'timm':
-            # Load directly from timm
-            model_name = config.get('source') or config.get('timm_name')
-            num_classes = config.get('num_classes')
-            model_data = load_from_timm(model_name, num_classes)
-            if model_data:
-                loaded_models[model_key] = model_data
-                return model_data
-        
-        elif model_type == 'huggingface':
+        if model_type == 'huggingface':
             # Load directly from HuggingFace
             model_name = config.get('source') or config.get('huggingface_name')
             num_classes = config.get('num_classes')
@@ -669,21 +608,6 @@ def load_model(model_key):
                     # Got state dict, try fallbacks
                     print(f"Loaded state dict, trying fallback methods...")
                     
-                    # Try timm fallback (check both timm_architecture and timm_fallback)
-                    timm_name = config.get('timm_architecture') or config.get('timm_fallback')
-                    if timm_name and TIMM_AVAILABLE:
-                        fallback_data = load_from_timm(timm_name, config.get('num_classes'))
-                        if fallback_data:
-                            # Try to load state dict into timm model
-                            try:
-                                fallback_data['model'].load_state_dict(model_data['state_dict'])
-                                fallback_data['model'].eval()
-                                loaded_models[model_key] = fallback_data
-                                print(f"✓ Model {model_key} loaded using timm fallback")
-                                return fallback_data
-                            except:
-                                pass
-                    
                     # Try HuggingFace fallback
                     if config.get('huggingface_fallback') and HUGGINGFACE_AVAILABLE:
                         fallback_data = load_from_huggingface(config['huggingface_fallback'], config.get('num_classes'))
@@ -703,15 +627,7 @@ def load_model(model_key):
                 else:
                     print(f"Failed to load model from {model_path}")
             
-            # If .pth file not found, try fallbacks
-            timm_name = config.get('timm_architecture') or config.get('timm_fallback')
-            if timm_name and TIMM_AVAILABLE:
-                print(f"Model file not found, trying timm fallback: {timm_name}")
-                model_data = load_from_timm(timm_name, config.get('num_classes'))
-                if model_data:
-                    loaded_models[model_key] = model_data
-                    return model_data
-            
+            # If .pth file not found, try HuggingFace fallback
             if config.get('huggingface_fallback') and HUGGINGFACE_AVAILABLE:
                 print(f"Model file not found, trying HuggingFace fallback: {config['huggingface_fallback']}")
                 model_data = load_from_huggingface(config['huggingface_fallback'], config.get('num_classes'))
@@ -807,7 +723,7 @@ def get_models():
                 # HuggingFace models are available if library is installed
                 exists = HUGGINGFACE_AVAILABLE
             elif model_type == 'timm':
-                exists = TIMM_AVAILABLE
+                exists = False  # timm library removed
             else:
                 # For simulated models (no actual files), mark as available
                 if key in ['12layer_cnn', 'resnet50', '5layer_cnn']:
@@ -935,14 +851,14 @@ def predict():
         import time
         start_time = time.time()
         
-        if model_type in ['pytorch', 'pytorch_timm', 'pytorch_huggingface', 'timm', 'huggingface']:
-            # PyTorch-based prediction (including timm and HuggingFace)
+        if model_type in ['pytorch', 'pytorch_huggingface', 'huggingface']:
+            # PyTorch-based prediction (including HuggingFace)
             if not PYTORCH_AVAILABLE:
                 return jsonify({"error": "PyTorch not available"}), 500
             
             try:
-                # Handle timm models (your models are in timm format!)
-                if model_type == 'pytorch_timm' or model_type == 'timm':
+                # Handle HuggingFace models
+                if model_type == 'pytorch_huggingface' or model_type == 'huggingface':
                     model = model_data['model']
                     # Use ImageNet normalization for vision transformers
                     img_tensor = preprocess_image(image, target_size=(224, 224), use_imagenet_norm=True, framework='pytorch')
@@ -952,31 +868,36 @@ def predict():
                     
                     with torch.no_grad():
                         outputs = model(img_tensor)
+                        # Handle HuggingFace output object
+                        if hasattr(outputs, 'logits'):
+                            logits = outputs.logits
+                        else:
+                            logits = outputs
                         
                         print(f"\n{'='*60}")
                         print(f"MODEL PREDICTION DEBUG for {model_id} (DR Classification):")
                         print(f"{'='*60}")
-                        print(f"Raw outputs shape: {outputs.shape}")
-                        print(f"Raw outputs (logits): {outputs[0].cpu().numpy()}")
-                        print(f"Output dtype: {outputs.dtype}")
-                        print(f"Output device: {outputs.device}")
+                        print(f"Raw logits shape: {logits.shape}")
+                        print(f"Raw logits: {logits[0].cpu().numpy()}")
+                        print(f"Output dtype: {logits.dtype}")
+                        print(f"Output device: {logits.device}")
                         
                         # Check if model is actually working (not all zeros or same values)
-                        output_values = outputs[0].cpu().numpy()
+                        output_values = logits[0].cpu().numpy()
                         unique_vals = np.unique(output_values)
                         print(f"Unique output values: {unique_vals}")
                         if len(unique_vals) == 1:
                             print("⚠️  WARNING: All output values are the same! Model might not be working correctly.")
                         
                         # Handle binary classification (sigmoid) vs multi-class (softmax)
-                        if outputs.shape[1] == 1:
+                        if logits.shape[1] == 1:
                             # Binary classification with sigmoid (output is single value)
                             print(f"Detected binary classification (sigmoid output)")
-                            raw_output = outputs[0, 0].item()
+                            raw_output = logits[0, 0].item()
                             print(f"Raw sigmoid input (logit): {raw_output:.6f}")
                             
                             # Apply sigmoid to get probability
-                            prob_dr = torch.sigmoid(outputs[0, 0]).item()
+                            prob_dr = torch.sigmoid(logits[0, 0]).item()
                             prob_normal = 1.0 - prob_dr
                             
                             # For binary classification, the model outputs logit for DR class
@@ -1021,7 +942,7 @@ def predict():
                             predictions = np.array([[prob_normal, prob_dr]])
                         else:
                             # Multi-class classification with softmax
-                            predictions = torch.nn.functional.softmax(outputs, dim=1)
+                            predictions = torch.nn.functional.softmax(logits, dim=1)
                             predictions = predictions.cpu().numpy()
                             print(f"\nProbabilities after softmax:")
                             for i, prob in enumerate(predictions[0]):
@@ -1077,10 +998,15 @@ def predict():
                         img_tensor = preprocess_image(image, target_size=(224, 224), use_imagenet_norm=True, framework='pytorch')
                         with torch.no_grad():
                             outputs = model(img_tensor)
-                            predictions = torch.nn.functional.softmax(outputs, dim=1)
+                            # Handle HuggingFace output object
+                            if hasattr(outputs, 'logits'):
+                                logits = outputs.logits
+                            else:
+                                logits = outputs
+                            predictions = torch.nn.functional.softmax(logits, dim=1)
                             predictions = predictions.cpu().numpy()
                 else:
-                    # Standard PyTorch/timm models
+                    # Standard PyTorch models
                     # Preprocess for PyTorch
                     img_tensor = preprocess_image(image, use_imagenet_norm=use_imagenet, framework='pytorch')
                     
@@ -1088,7 +1014,7 @@ def predict():
                     if 'model' in model_data:
                         model = model_data['model']
                     else:
-                        # Need to load from state dict - try timm/HuggingFace first
+                        # Need to load from state dict - try HuggingFace
                         config = MODEL_CONFIGS.get(model_id, {})
                         checkpoint = model_data.get('checkpoint')
                         num_classes = model_data.get('num_classes')
@@ -1098,51 +1024,42 @@ def predict():
                         
                         model = None
                         
-                        # Try timm first (check both timm_architecture and timm_fallback)
-                        timm_name = config.get('timm_architecture') or config.get('timm_fallback')
-                        if timm_name and TIMM_AVAILABLE:
-                            try:
-                                print(f"Loading {model_id} architecture from timm: {timm_name}")
-                                model = timm.create_model(
-                                    timm_name,
-                                    pretrained=False,
-                                    num_classes=num_classes or 2
-                                )
-                                model.load_state_dict(model_data['state_dict'])
-                                model.to(DEVICE)
-                                model.eval()
-                                print(f"✓ Successfully loaded {model_id} using timm")
-                            except Exception as e:
-                                print(f"Failed to load with timm: {e}")
-                                model = None
-                        
-                        # Try HuggingFace if timm failed
+                        # Try HuggingFace
                         hf_name = config.get('huggingface_architecture') or config.get('huggingface_fallback')
                         if model is None and hf_name and HUGGINGFACE_AVAILABLE:
                             try:
                                 print(f"Loading {model_id} architecture from HuggingFace: {hf_name}")
+                                # Load processor for preprocessing
+                                processor = AutoImageProcessor.from_pretrained(
+                                    hf_name,
+                                    size={"height": 224, "width": 224}
+                                )
                                 model = AutoModelForImageClassification.from_pretrained(
                                     hf_name,
-                                    num_labels=num_classes or 2
+                                    num_labels=num_classes or config.get('num_classes') or 1,  # Default to 1 for binary sigmoid
+                                    ignore_mismatched_sizes=True
                                 )
-                                model.load_state_dict(model_data['state_dict'])
+                                model.load_state_dict(model_data['state_dict'], strict=False)
                                 model.to(DEVICE)
                                 model.eval()
+                                # Store processor in model_data for later use
+                                model_data['processor'] = processor
                                 print(f"✓ Successfully loaded {model_id} using HuggingFace")
                             except Exception as e:
                                 print(f"Failed to load with HuggingFace: {e}")
+                                import traceback
+                                traceback.print_exc()
                                 model = None
                         
                         # Fallback to manual architecture (only for non-timm/HF models)
                         if model is None:
-                            # For swin/beit, we MUST use timm or HuggingFace
+                            # For swin/beit, we MUST use HuggingFace
                             if model_id in ['swin', 'beit']:
                                 raise ValueError(
                                     f"Could not load {model_id} model. "
-                                    f"timm or HuggingFace is required. "
-                                    f"timm available: {TIMM_AVAILABLE}, "
+                                    f"HuggingFace is required. "
                                     f"HuggingFace available: {HUGGINGFACE_AVAILABLE}. "
-                                    f"Please install: pip install timm transformers"
+                                    f"Please install: pip install transformers"
                                 )
                             # For other models, try manual architecture
                             try:
@@ -1152,13 +1069,18 @@ def predict():
                                 model.to(DEVICE)
                                 model.eval()
                             except Exception as e:
-                                raise ValueError(f"Could not load model {model_id}: {e}. Make sure timm or HuggingFace is available, or define the architecture in model_architectures.py")
+                                raise ValueError(f"Could not load model {model_id}: {e}. Make sure HuggingFace is available, or define the architecture in model_architectures.py")
                     
                     # Make prediction
                     with torch.no_grad():
                         outputs = model(img_tensor)
+                        # Handle HuggingFace output object
+                        if hasattr(outputs, 'logits'):
+                            logits = outputs.logits
+                        else:
+                            logits = outputs
                         # Apply softmax to get probabilities
-                        predictions = torch.nn.functional.softmax(outputs, dim=1)
+                        predictions = torch.nn.functional.softmax(logits, dim=1)
                         predictions = predictions.cpu().numpy()
                     
             except Exception as e:
@@ -1516,7 +1438,7 @@ def predict_all():
                 print(f"Processing {model_id} with actual model")
                 use_imagenet = model_id in ['resnet50']
                 
-                if model_type in ['pytorch', 'huggingface', 'pytorch_huggingface', 'timm', 'pytorch_timm']:
+                if model_type in ['pytorch', 'huggingface', 'pytorch_huggingface']:
                     # PyTorch/HuggingFace prediction
                     if not PYTORCH_AVAILABLE:
                         print(f"PyTorch not available, skipping {model_id}")
@@ -1525,28 +1447,54 @@ def predict_all():
                     # Check if model is already loaded (for BEiT and Swin)
                     model = model_data.get('model')
                     if model is not None:
-                        # Model is already loaded (timm models)
+                        # Model is already loaded
                         print(f"Using pre-loaded model for {model_id}")
                         # Add inference delay to simulate processing time
                         time.sleep(0.8)  # 800ms inference delay for BEiT/Swin
                         
-                        # Use ImageNet normalization for vision transformers
-                        img_tensor = preprocess_image(image, target_size=(224, 224), use_imagenet_norm=True, framework='pytorch')
-                        
-                        with torch.no_grad():
-                            outputs = model(img_tensor)
-                            # Handle binary (sigmoid) vs multi-class (softmax)
-                            if outputs.shape[1] == 1:
-                                raw_output = outputs[0, 0].item()
-                                prob_dr = torch.sigmoid(outputs[0, 0]).item()
-                                prob_normal = 1.0 - prob_dr
-                                predictions = np.array([[prob_normal, prob_dr]])
-                                print(f"Model {model_id} - Binary sigmoid: logit={raw_output:.6f}, P(DR)={prob_dr:.4f}, P(Healthy)={prob_normal:.4f}")
-                            else:
-                                predictions = torch.nn.functional.softmax(outputs, dim=1)
-                                predictions = predictions.cpu().numpy()
-                    # Handle timm models (your models are in timm format!)
-                    elif model_type == 'pytorch_timm' or model_type == 'timm':
+                        # Check if processor is available (HuggingFace models)
+                        processor = model_data.get('processor')
+                        if processor:
+                            # Use HuggingFace processor
+                            inputs = processor(image, return_tensors="pt", size={"height": 224, "width": 224})
+                            inputs = {k: v.to(DEVICE) for k, v in inputs.items()}
+                            
+                            with torch.no_grad():
+                                outputs = model(**inputs)
+                                logits = outputs.logits
+                                # Handle binary (sigmoid) vs multi-class (softmax)
+                                if logits.shape[1] == 1:
+                                    raw_output = logits[0, 0].item()
+                                    prob_dr = torch.sigmoid(logits[0, 0]).item()
+                                    prob_normal = 1.0 - prob_dr
+                                    predictions = np.array([[prob_normal, prob_dr]])
+                                    print(f"Model {model_id} - Binary sigmoid: logit={raw_output:.6f}, P(DR)={prob_dr:.4f}, P(Healthy)={prob_normal:.4f}")
+                                else:
+                                    predictions = torch.nn.functional.softmax(logits, dim=1)
+                                    predictions = predictions.cpu().numpy()
+                        else:
+                            # Use ImageNet normalization for vision transformers
+                            img_tensor = preprocess_image(image, target_size=(224, 224), use_imagenet_norm=True, framework='pytorch')
+                            
+                            with torch.no_grad():
+                                outputs = model(img_tensor)
+                                # Handle HuggingFace output object
+                                if hasattr(outputs, 'logits'):
+                                    logits = outputs.logits
+                                else:
+                                    logits = outputs
+                                # Handle binary (sigmoid) vs multi-class (softmax)
+                                if logits.shape[1] == 1:
+                                    raw_output = logits[0, 0].item()
+                                    prob_dr = torch.sigmoid(logits[0, 0]).item()
+                                    prob_normal = 1.0 - prob_dr
+                                    predictions = np.array([[prob_normal, prob_dr]])
+                                    print(f"Model {model_id} - Binary sigmoid: logit={raw_output:.6f}, P(DR)={prob_dr:.4f}, P(Healthy)={prob_normal:.4f}")
+                                else:
+                                    predictions = torch.nn.functional.softmax(logits, dim=1)
+                                    predictions = predictions.cpu().numpy()
+                    # Handle HuggingFace models
+                    elif model_type == 'pytorch_huggingface' or model_type == 'huggingface':
                         model = model_data.get('model')
                         if model is None:
                             print(f"Error: Model {model_id} loaded but 'model' key not found in model_data")
@@ -1587,7 +1535,12 @@ def predict_all():
                             img_tensor = preprocess_image(image, target_size=(224, 224), use_imagenet_norm=True, framework='pytorch')
                             with torch.no_grad():
                                 outputs = model(img_tensor)
-                                predictions = torch.nn.functional.softmax(outputs, dim=1)
+                                # Handle HuggingFace output object
+                                if hasattr(outputs, 'logits'):
+                                    logits = outputs.logits
+                                else:
+                                    logits = outputs
+                                predictions = torch.nn.functional.softmax(logits, dim=1)
                                 predictions = predictions.cpu().numpy()
                     else:
                         # Standard PyTorch
@@ -1599,7 +1552,7 @@ def predict_all():
                             if 'model' in model_data:
                                 model = model_data['model']
                             else:
-                                # Need to load from state dict - try timm/HuggingFace first
+                                # Need to load from state dict - try HuggingFace
                                 config = MODEL_CONFIGS.get(model_id, {})
                                 checkpoint = model_data.get('checkpoint')
                                 num_classes = model_data.get('num_classes')
@@ -1609,42 +1562,38 @@ def predict_all():
                                 
                                 model = None
                                 
-                                # Try timm first (check both timm_architecture and timm_fallback)
-                                timm_name = config.get('timm_architecture') or config.get('timm_fallback')
-                                if timm_name and TIMM_AVAILABLE:
+                                # Try HuggingFace
+                                hf_name = config.get('huggingface_architecture') or config.get('huggingface_fallback')
+                                if model is None and hf_name and HUGGINGFACE_AVAILABLE:
                                     try:
-                                        model = timm.create_model(
-                                            timm_name,
-                                            pretrained=False,
-                                            num_classes=num_classes or 1  # Default to 1 for binary sigmoid
+                                        print(f"Loading {model_id} architecture from HuggingFace: {hf_name}")
+                                        # Load processor for preprocessing
+                                        processor = AutoImageProcessor.from_pretrained(
+                                            hf_name,
+                                            size={"height": 224, "width": 224}
                                         )
-                                        model.load_state_dict(model_data['state_dict'])
+                                        model = AutoModelForImageClassification.from_pretrained(
+                                            hf_name,
+                                            num_labels=num_classes or 1,  # Default to 1 for binary sigmoid
+                                            ignore_mismatched_sizes=True
+                                        )
+                                        model.load_state_dict(model_data['state_dict'], strict=False)
                                         model.to(DEVICE)
                                         model.eval()
+                                        # Store processor in model_data for later use
+                                        model_data['processor'] = processor
+                                        print(f"✓ Successfully loaded {model_id} using HuggingFace")
                                     except Exception as e:
-                                        print(f"Failed to load {model_id} with timm: {e}")
+                                        print(f"Failed to load {model_id} with HuggingFace: {e}")
+                                        import traceback
+                                        traceback.print_exc()
                                         model = None
-                                
-                            # Try HuggingFace if timm failed
-                            hf_name = config.get('huggingface_architecture') or config.get('huggingface_fallback')
-                            if model is None and hf_name and HUGGINGFACE_AVAILABLE:
-                                try:
-                                    model = AutoModelForImageClassification.from_pretrained(
-                                        hf_name,
-                                        num_labels=num_classes or 1  # Default to 1 for binary sigmoid
-                                    )
-                                    model.load_state_dict(model_data['state_dict'])
-                                    model.to(DEVICE)
-                                    model.eval()
-                                except Exception as e:
-                                    print(f"Failed to load {model_id} with HuggingFace: {e}")
-                                    model = None
                                 
                                 # Fallback to manual architecture (only for non-timm/HF models)
                                 if model is None:
-                                    # For swin/beit, we MUST use timm or HuggingFace
+                                    # For swin/beit, we MUST use HuggingFace
                                     if model_id in ['swin', 'beit']:
-                                        print(f"Skipping {model_id} - requires timm or HuggingFace")
+                                        print(f"Skipping {model_id} - requires HuggingFace")
                                         continue
                                     # For other models, try manual architecture
                                     try:
@@ -1657,14 +1606,19 @@ def predict_all():
                                         print(f"Could not load {model_id} with manual architecture: {e}")
                                         continue
                             
-                            # Make prediction for PyTorch/timm models
+                            # Make prediction for PyTorch models
                             if model is not None:
                                 with torch.no_grad():
                                     outputs = model(img_tensor)
+                                    # Handle HuggingFace output object
+                                    if hasattr(outputs, 'logits'):
+                                        logits = outputs.logits
+                                    else:
+                                        logits = outputs
                                     # Handle binary (sigmoid) vs multi-class (softmax)
-                                    if outputs.shape[1] == 1:
-                                        raw_output = outputs[0, 0].item()
-                                        prob_dr = torch.sigmoid(outputs[0, 0]).item()
+                                    if logits.shape[1] == 1:
+                                        raw_output = logits[0, 0].item()
+                                        prob_dr = torch.sigmoid(logits[0, 0]).item()
                                         prob_normal = 1.0 - prob_dr
                                         
                                         # Use raw logit for prediction (more reliable)
@@ -1675,7 +1629,7 @@ def predict_all():
                                         # Debug output
                                         print(f"Model {model_id} - Raw logit: {raw_output:.6f}, P(DR): {prob_dr:.4f}, P(Healthy): {prob_normal:.4f}")
                                     else:
-                                        predictions = torch.nn.functional.softmax(outputs, dim=1)
+                                        predictions = torch.nn.functional.softmax(logits, dim=1)
                                         predictions = predictions.cpu().numpy()
                             else:
                                 print(f"Could not load model {model_id} - skipping")

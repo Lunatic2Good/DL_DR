@@ -51,3 +51,19 @@ instance/
 .env
 .env.local
 
+# Test and diagnostic files
+test_*.py
+check_*.py
+inspect_*.py
+*_test.py
+
+# Documentation (optional - uncomment if you want to exclude)
+# *.md
+# !README.md
+
+# Batch files
+*.bat
+
+# Empty directories
+api/
+

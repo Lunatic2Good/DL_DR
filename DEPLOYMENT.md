@@ -7,15 +7,18 @@ This guide will help you deploy the Diabetic Retinopathy Classification System t
 ### Steps:
 
 1. **Sign up/Login to Render**
+
    - Go to https://render.com
    - Sign up with GitHub (recommended) or email
 
 2. **Create New Web Service**
+
    - Click "New +" → "Web Service"
    - Connect your GitHub repository
    - Or use "Public Git repository" and paste your repo URL
 
 3. **Configure Service**
+
    - **Name**: `diabetic-retinopathy-classifier` (or your preferred name)
    - **Environment**: `Python 3`
    - **Build Command**: `pip install -r requirements.txt`
@@ -23,6 +26,7 @@ This guide will help you deploy the Diabetic Retinopathy Classification System t
    - **Plan**: Free (or paid if you need more resources)
 
 4. **Environment Variables** (Optional)
+
    - `FLASK_ENV`: `production`
    - `PYTHON_VERSION`: `3.11.0`
 
@@ -32,6 +36,7 @@ This guide will help you deploy the Diabetic Retinopathy Classification System t
    - Your app will be live at: `https://your-app-name.onrender.com`
 
 ### Notes:
+
 - Free tier spins down after 15 minutes of inactivity
 - First request after spin-down may take 30-60 seconds
 - Model files (.pth) need to be uploaded separately or use Git LFS
@@ -74,6 +79,7 @@ This guide will help you deploy the Diabetic Retinopathy Classification System t
 ## Important Notes for Deployment:
 
 ### Model Files
+
 - Model files (.pth, .h5) are excluded from git (they're large)
 - Options:
   1. Upload models manually after deployment
@@ -81,14 +87,17 @@ This guide will help you deploy the Diabetic Retinopathy Classification System t
   3. Store models in cloud storage (S3, etc.) and download on startup
 
 ### Environment Variables
+
 - Set `FLASK_ENV=production` for production
 - Port is automatically set by hosting platform
 
 ### Static Files
+
 - Static files (HTML, CSS, JS) are served by Flask
 - For better performance, consider using a CDN
 
 ### Build Time
+
 - First build may take 10-20 minutes due to PyTorch installation
 - Subsequent builds are faster
 
@@ -97,16 +106,19 @@ This guide will help you deploy the Diabetic Retinopathy Classification System t
 ## Troubleshooting
 
 ### Build Fails
+
 - Check build logs for errors
 - Ensure all dependencies are in requirements.txt
 - Verify Python version compatibility
 
 ### App Crashes
+
 - Check application logs
 - Verify model files are accessible
 - Check environment variables
 
 ### Slow Performance
+
 - Free tiers have limited resources
 - Consider upgrading to paid tier
 - Optimize model loading (lazy loading)
@@ -123,4 +135,3 @@ git push origin main
 ```
 
 Then follow the platform-specific steps above.
-
