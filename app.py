@@ -45,8 +45,8 @@ except ImportError:
     TENSORFLOW_AVAILABLE = False
     print("TensorFlow not available (optional)")
 
-app = Flask(__name__, static_folder='static')
-CORS(app)
+app = Flask(__name__, static_folder='static', static_url_path='')
+CORS(app, resources={r"/api/*": {"origins": "*"}})
 
 # Model paths - update these with your actual model file paths
 # Supports .pth (PyTorch), .h5 (TensorFlow/Keras), timm models, and HuggingFace models
@@ -796,40 +796,48 @@ def serve_js():
 @app.route('/api/models', methods=['GET'])
 def get_models():
     """Get list of available models"""
-    models = []
-    for key, name in MODEL_NAMES.items():
-        config = MODEL_CONFIGS.get(key, {})
-        model_type = config.get('type', 'pth_file')
-        
-        # Check availability based on model type
-        if model_type == 'huggingface':
-            # HuggingFace models are available if library is installed
-            exists = HUGGINGFACE_AVAILABLE
-        elif model_type == 'timm':
-            exists = TIMM_AVAILABLE
-        else:
-            # For simulated models (no actual files), mark as available
-            if key in ['12layer_cnn', 'resnet50', '5layer_cnn']:
-                exists = True  # These use simulated predictions
+    try:
+        models = []
+        for key, name in MODEL_NAMES.items():
+            config = MODEL_CONFIGS.get(key, {})
+            model_type = config.get('type', 'pth_file')
+            
+            # Check availability based on model type
+            if model_type == 'huggingface':
+                # HuggingFace models are available if library is installed
+                exists = HUGGINGFACE_AVAILABLE
+            elif model_type == 'timm':
+                exists = TIMM_AVAILABLE
             else:
-                # Check if file exists for pth_file type
-                model_path = MODEL_PATHS.get(key) or config.get('source')
-                exists = os.path.exists(model_path) if model_path else False
-        
-        models.append({
-            "id": key,
-            "name": name,
-            "available": exists,
-            "metrics": PERFORMANCE_METRICS.get(key, {})
-        })
-    return jsonify(models)
+                # For simulated models (no actual files), mark as available
+                if key in ['12layer_cnn', 'resnet50', '5layer_cnn']:
+                    exists = True  # These use simulated predictions
+                else:
+                    # Check if file exists for pth_file type
+                    model_path = MODEL_PATHS.get(key) or config.get('source')
+                    exists = os.path.exists(model_path) if model_path else False
+            
+            models.append({
+                "id": key,
+                "name": name,
+                "available": exists,
+                "metrics": PERFORMANCE_METRICS.get(key, {})
+            })
+        return jsonify(models)
+    except Exception as e:
+        print(f"Error getting models list: {str(e)}")
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/api/models/<model_id>/metrics', methods=['GET'])
 def get_model_metrics(model_id):
     """Get performance metrics for a specific model"""
-    if model_id in PERFORMANCE_METRICS:
-        return jsonify(PERFORMANCE_METRICS[model_id])
-    return jsonify({"error": "Model not found"}), 404
+    try:
+        if model_id in PERFORMANCE_METRICS:
+            return jsonify(PERFORMANCE_METRICS[model_id])
+        return jsonify({"error": "Model not found"}), 404
+    except Exception as e:
+        print(f"Error getting metrics for {model_id}: {str(e)}")
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/api/predict', methods=['POST'])
 def predict():
@@ -1789,6 +1797,18 @@ def predict_all():
     
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+# Catch-all route for frontend routing (SPA) - MUST be last, after all API routes
+@app.route('/<path:path>')
+def serve_static(path):
+    # Don't serve API routes as static files
+    if path.startswith('api/'):
+        return jsonify({"error": "API endpoint not found"}), 404
+    # Try to serve static file, fallback to index.html for SPA routing
+    try:
+        return send_from_directory('static', path)
+    except:
+        return send_from_directory('static', 'index.html')
 
 if __name__ == '__main__':
     # Create models directory if it doesn't exist
