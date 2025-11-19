@@ -1793,5 +1793,9 @@ def predict_all():
 if __name__ == '__main__':
     # Create models directory if it doesn't exist
     os.makedirs('models', exist_ok=True)
-    app.run(debug=True, port=5000)
+    # Get port from environment variable (for deployment) or use 5000 for local
+    port = int(os.environ.get('PORT', 5000))
+    # Only run in debug mode locally, not in production
+    debug = os.environ.get('FLASK_ENV') == 'development'
+    app.run(debug=debug, host='0.0.0.0', port=port)
 
